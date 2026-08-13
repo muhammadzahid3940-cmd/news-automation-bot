@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -236,8 +237,7 @@ def fetch_latest_news(
         topics_list = topics_list[:max_topics]
     headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
 
-    headlines = []
-    for topic in topics_list:
+    def _search_topic(topic: str) -> list[dict]:
         resp = requests.post(
             SERPER_NEWS_URL,
             headers=headers,
@@ -245,11 +245,12 @@ def fetch_latest_news(
             timeout=30,
         )
         resp.raise_for_status()
+        items = []
         for item in resp.json().get("news", []):
             source = item.get("source")
             if isinstance(source, dict):
                 source = source.get("name")
-            headlines.append(
+            items.append(
                 {
                     "headline": item.get("title"),
                     "link": item.get("link"),
@@ -258,6 +259,15 @@ def fetch_latest_news(
                     "date": item.get("date", ""),
                 }
             )
+        return items
+
+    headlines = []
+    with ThreadPoolExecutor(max_workers=min(len(topics_list), 6)) as pool:
+        futures = [
+            pool.submit(_search_topic, topic) for topic in topics_list
+        ]
+        for future in as_completed(futures):
+            headlines.extend(future.result())
 
     return {"topics": topics_list, "headlines": dedupe_articles(headlines)}
 
@@ -267,29 +277,40 @@ def fetch_latest_news(
 # ---------------------------------------------------------------------------
 def _llm_candidates() -> list[tuple[str, object, str, str]]:
     """Return (provider, client, model, label) candidates, one per configured key
-    and Gemini model. Gemini free tier limits each MODEL to ~20 requests/day, so
-    several models are registered and the retry loop falls over to the next model
-    when one is rate limited. Identical keys/models are deduplicated."""
+    and Gemini model. The same key registered under several env names (e.g.
+    GOOGLE_API_KEY and GEMINI_API_KEY) is only used once. Gemini free tier limits
+    each MODEL to ~20 requests/day, so several models are registered and the retry
+    loop falls over to the next model when one is rate limited. Fast lite models
+    are tried first so responses stay quick and within free-tier rate limits."""
     candidates = []
     seen = set()
+    clients_by_key: dict[str, object] = {}
 
-    def _add(provider, client, model, label, key, model_name=None):
+    def _add(provider: str, key: str, model: str, label: str, model_name=None):
         identity = (key, model_name or model)
         if not key or identity in seen:
             return
         seen.add(identity)
+        if provider == "gemini":
+            client = clients_by_key.get(key)
+            if client is None:
+                from google import genai
+
+                client = genai.Client(api_key=key)
+                clients_by_key[key] = client
+        else:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=key)
         candidates.append((provider, client, model, label))
 
     openai_key = _env("OPENAI_API_KEY")
     if openai_key:
-        from openai import OpenAI
-
         _add(
             "openai",
-            OpenAI(api_key=openai_key),
+            openai_key,
             _env("OPENAI_MODEL") or "gpt-4o-mini",
             "OpenAI",
-            openai_key,
         )
 
     gemini_models = [
@@ -297,23 +318,21 @@ def _llm_candidates() -> list[tuple[str, object, str, str]]:
         for m in _env("GEMINI_MODELS", "MODEL_NAME", "GEMINI_MODEL_NAME").split(",")
         if m.strip()
     ] or [
-        "gemini-3.6-flash",
-        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
-        "gemini-flash-latest",
         "gemini-flash-lite-latest",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-flash-latest",
     ]
     gemini_models = [
         m.replace("gemini/", "").replace("models/", "") for m in gemini_models
     ]
-    for label, name in (("Google", "GOOGLE_API_KEY"), ("Gemini", "GEMINI_API_KEY")):
+    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         key = _env(name)
         if key:
-            from google import genai
-
             for model in gemini_models:
-                _add("gemini", genai.Client(api_key=key), model, label, key, model)
+                _add("gemini", key, model, "Gemini", model)
 
     if not candidates:
         raise RuntimeError(
@@ -379,7 +398,7 @@ def _generate_with_retry(candidates: list, contents: str) -> str:
                         )
                     continue
                 match = _retry_delay(message)
-                wait = min(70, int(float(match.group(1))) + 2) if match else 15
+                wait = min(30, int(float(match.group(1))) + 2) if match else 8
                 print(
                     f"    [summarizer] transient error, waiting {wait}s "
                     f"(attempt {attempts}/{max_attempts})"
@@ -387,7 +406,7 @@ def _generate_with_retry(candidates: list, contents: str) -> str:
                 time.sleep(wait)
         if cycle_limited:
             match = _retry_delay(str(last_error))
-            wait = min(70, int(float(match.group(1))) + 2) if match else 15
+            wait = min(30, int(float(match.group(1))) + 2) if match else 8
             print(
                 f"    [summarizer] all keys rate limited, waiting {wait}s before retrying"
             )
@@ -399,6 +418,9 @@ def summarize_articles(articles: dict) -> dict:
     """Summarize fetched articles into a markdown digest plus structured rows
     (headline, summary, source, url) for logging. One batched LLM call."""
     headlines = dedupe_articles(articles.get("headlines", []))
+    max_articles = int(_env("MAX_ARTICLES") or "15")
+    if max_articles > 0:
+        headlines = headlines[:max_articles]
     if not headlines:
         return {
             "digest": "# Daily News Digest\n\nNo articles found for the requested topic.",
@@ -479,23 +501,30 @@ def summarize_articles(articles: dict) -> dict:
         "no",
     ):
         max_live = int(_env("SLACK_LIVE_MAX") or "15")
-        for row in rows[:max_live]:
+        candidates = rows[:max_live]
+
+        def _post(row: dict) -> str:
             stamp = datetime.now().strftime("%d %b %Y \u00b7 %H:%M:%S")
             source = f" ({row['source']})" if row["source"] else ""
             link = f"<{row['url']}|Full story>" if row["url"] else ""
-            try:
-                post_slack_message(
-                    f"\u26a1 *{stamp}*\n"
-                    f"*{row['headline']}*{source}\n"
-                    f"{row['summary']}\n\n"
-                    f"{link}"
-                )
-                print(
-                    f"    [live slack] posted: {row['headline'][:60]}"
-                )
-            except Exception as exc:  # noqa: BLE001 - keep summarizing if a post fails
-                print(f"    [live slack] post failed: {exc}")
-                break
+            post_slack_message(
+                f"\u26a1 *{stamp}*\n"
+                f"*{row['headline']}*{source}\n"
+                f"{row['summary']}\n\n"
+                f"{link}"
+            )
+            return row["headline"]
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [pool.submit(_post, row) for row in candidates]
+            for future in as_completed(futures):
+                try:
+                    print(
+                        f"    [live slack] posted: {future.result()[:60]}"
+                    )
+                except Exception as exc:  # noqa: BLE001 - keep summarizing if a post fails
+                    print(f"    [live slack] post failed: {exc}")
+                    break
 
     topic = ", ".join(articles.get("topics", []))
     lines = [
@@ -709,11 +738,13 @@ def log_to_google_sheets(rows: list[dict]) -> str:
             )
         return f"Google Sheets: skipped ({detail[:220]}{hint})"
     try:
-        existing = [r for r in worksheet.get_all_values() if any(r)]
+        first_cell = worksheet.acell("A1").value
     except Exception:  # noqa: BLE001 - treat read failure as empty sheet
-        existing = []
+        first_cell = None
     values = (
-        [["Date", "Headline", "Summary", "Source URL"]] if not existing else []
+        [["Date", "Headline", "Summary", "Source URL"]]
+        if not (first_cell or "").strip()
+        else []
     )
     for row in rows:
         values.append(

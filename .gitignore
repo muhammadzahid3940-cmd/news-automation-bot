@@ -6,3 +6,8 @@ web.log
 web.log.err
 web.log.out
 .vercel/
+.vercel
+
+.env
+.env.*
+!.env.example

@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from crew import run_crew
+from db import save_run as db_save_run
 
 ROOT = Path(__file__).parent
 load_dotenv(ROOT / ".env")
@@ -108,12 +109,21 @@ def run_pipeline(topic: str | None = None, save: bool = True) -> dict:
         raise
 
     if save:
-        OUTPUT_DIR.mkdir(exist_ok=True)
-        DIGEST_FILE.write_text(result["digest"], encoding="utf-8")
-        LATEST_FILE.write_text(
-            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        log("Digest saved to output/latest.json")
+        try:
+            OUTPUT_DIR.mkdir(exist_ok=True)
+            DIGEST_FILE.write_text(result["digest"], encoding="utf-8")
+            LATEST_FILE.write_text(
+                json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            log("Digest saved to output/latest.json")
+        except OSError as exc:  # noqa: BLE001 - read-only FS (serverless)
+            log(f"File save skipped: {exc}")
+
+    try:
+        db_save_run(result)
+        log("Digest saved to Postgres")
+    except Exception as exc:  # noqa: BLE001 - Postgres is best-effort
+        log(f"Postgres save skipped: {exc}")
 
     return result
 
