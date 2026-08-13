@@ -242,3 +242,40 @@ INFO:     127.0.0.1:2461 - "GET /api/live-cricket HTTP/1.1" 200 OK
 Slack: posted (HTTP 200)
 INFO:     127.0.0.1:2465 - "GET /api/live-cricket HTTP/1.1" 200 OK
 INFO:     127.0.0.1:2549 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2552 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2642 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2645 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2727 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2729 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2814 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2817 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2898 - "GET /api/live-cricket HTTP/1.1" 200 OK
+Slack: posted (HTTP 200)
+INFO:     127.0.0.1:2900 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2989 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2992 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3075 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3078 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3170 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3172 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3259 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3262 - "GET /api/live-cricket HTTP/1.1" 200 OK
+Slack: posted (HTTP 200)
+INFO:     127.0.0.1:3359 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3361 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3445 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3448 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3531 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3534 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3617 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3622 - "GET /api/live-cricket HTTP/1.1" 200 OK
+[news] fetched 37 articles for 'sports and game cricket'
+    [summarizer] 'Google/gemini-3.6-flash' rate limited - switching
+INFO:     127.0.0.1:3712 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3714 - "GET /api/live-cricket HTTP/1.1" 200 OK
+Slack: posted (HTTP 200)
+INFO:     127.0.0.1:3804 - "GET /api/live-cricket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3806 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3806 - "GET /api/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3806 - "GET /api/digest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3806 - "GET /api/status HTTP/1.1" 200 OK
